@@ -86,7 +86,7 @@ class Song
 
     def self.create(title, length)
         song = Song.new(title, length)
-        somg.save
+        song.save
         song
     end
 
@@ -156,9 +156,164 @@ class Song
             self.new_from_db(row)
         end.first
     end
+end
+
+********************************************************************************************************************************************************************************
+********************************************************************************************************************************************************************************
 
 
+# UPDATING RECORDS IN RUBY ORM
 
-
+class Song
+ 
+    attr_accessor :name, :album
+    attr_reader :id
+     
+      def initialize(id=nil, name, album)
+        @id = id
+        @name = name
+        @album = album
+      end
+     
+      def self.create_table
+        sql =  <<-SQL
+          CREATE TABLE IF NOT EXISTS songs (
+            id INTEGER PRIMARY KEY,
+            name TEXT,
+            album TEXT
+            )
+            SQL
+        DB[:conn].execute(sql)
+      end
+     
+      def save
+        sql = <<-SQL
+          INSERT INTO songs (name, album)
+          VALUES (?, ?)
+        SQL
+     
+        DB[:conn].execute(sql, self.name, self.album)
+        @id = DB[:conn].execute("SELECT last_insert_rowid() FROM songs")[0][0]
+      end
+     
+      def self.create(name:, album:)
+        song = Song.new(name, album)
+        song.save
+        song
+      end
+     
+      def self.find_by_name(name)
+        sql = "SELECT * FROM songs WHERE name = ?"
+        result = DB[:conn].execute(sql, name)[0]
+        Song.new(result[0], result[1], result[2])
+      end
+    end
 
 end
+    # With the Song class as defined above, we can create new Song instances, 
+    # save them to the database and retrieve them from the database:
+    
+    
+    ninety_nine_problems = Song.create(name: "99 Problems", album: "The Blueprint")
+ 
+    Song.find_by_name("99 Problems")
+    => #<Song:0x007f94f2c28ee8 @id=1, @name="99 Problems", @album="The Blueprint">
+    
+    # Now that we've seen how to create a Song instance, save its attributes to the database, 
+    # retrieve those attributes and use them to re-create a Song instance, let's move on to updating records and objects.
+
+    
+    Updating Songs
+    In order to update a record, we must first find it:
+    ninety_nine_problems = Song.find_by_name("99 Problems")
+    ninety_nine_problems.album
+    # => "The Blueprint"
+    # Uh-oh, 99 Problems is off The Black Album, as we all know. Let's fix this.
+    ninety_nine_problems.album = "The Black Album"
+    ninety_nine_problems.album
+    # => "The Black Album"
+    Much better. Now we need to save this record back into the database:
+    
+    # To do so, we'll need to use an UPDATE SQL statement. That statement would look something like this:
+
+        UPDATE songs
+        SET album="The Black Album"
+        WHERE name="99 Problems";
+        
+    # Let's put it all together using our SQLite3-Ruby gem magic. Remember, in this example, we assume our database connection is stored in DB[:conn].
+
+        sql = "UPDATE songs SET album = ? WHERE name = ?"
+        DB[:conn].execute(sql, ninety_nine_problems.album, ninety_nine_problems.name)
+        
+
+        Here we've updated the album of a given song. What happens when we want to update some other attribute of a song?
+
+        Let's take a look:
+         
+        Song.create(name: "Hella", album: "25")
+        # Let's correct the name of the above song from "Hella" to "Hello".
+         
+        hello = Song.find_by_name("Hella")
+          
+        sql = "UPDATE songs SET name='Hello' WHERE name = ?"
+          
+        DB[:conn].execute(sql, hello.name)
+
+        # This code is almost exactly the same as the code we used to update the album of the first song. 
+        # The only difference is in the particular attribute we wanted to update. In the first case, we were updating the album. In this case, we updated the name. 
+        # Repetitious code has a smell. 
+        # Let's extract this functionality of updating a record into a method, #update.
+
+        <<<<<The "#update" Method>>>>>
+    # How will we write a method that will allow us to update any attributes of any song? How will we know which attributes have been recently updated and which will remain the same?
+    # The best way for us to do this is to simply update all the attributes whenever we update a record. That way, we will catch any changed attributes, while the un-changed ones will simply remain the same.
+
+    For example:
+
+    hello = Song.find_by_name("Hella")
+ 
+    sql = "UPDATE songs SET name = 'Hello', album = ? WHERE name = ?"
+        
+    DB[:conn].execute(sql, hello.album, hello.name)
+
+    # Here we update both the name and album attribute of the song, even though only the name attribute is actually different.
+
+        def update
+            sql = "Update songs SET name = ?, album = ? WHERE name = ?"
+            DB[:conn].execute(sql, self.name, self.album, self.name)
+        end
+
+        # Now we can update a song with the following:
+
+        hello = Song.create(name: "Hella", album: "25")
+        hello.name = "Hello"
+        hello.update
+
+        def save
+            if self.id    #<<<<<<<<<<Refactoring our #save Method to Avoid Duplication**************
+                self.update
+            else
+                sql = <<-SQL
+                INSERT INTO songs (name, album)
+                VALUES (?, ?)
+                SQL
+         
+                DB[:conn].execute(sql, self.name, self.album)
+                @id = DB[:conn].execute("SELECT last_insert_rowid() FROM songs")[0][0]
+            end
+        end
+
+          <<<<<Using id to Update Records>>>>>
+            # Our #update method should identify the correct record to update based on the unique ID that both the song Ruby object and the songs table row share:
+
+        def update
+            sql = "UPDATE songs SET name = ?, album = ? WHERE id = ?"
+            DB[:conn].execute(sql, self.name, self.album, self.id)
+        end
+
+        # Now we will never have to worry about accidentally updating the wrong record, or being unable to find a record once we change its name.
+
+
+    end
+
+
