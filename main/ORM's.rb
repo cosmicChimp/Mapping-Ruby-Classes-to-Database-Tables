@@ -316,4 +316,77 @@ end
 
     end
 
+    ********************************************************************************************************************************************************************************
+    ********************************************************************************************************************************************************************************
 
+    >>>>>PREVENTING RECORD DUPLICATION<<<<<<
+
+    # Let's say we have a song, hello:
+
+    hello = Song.new("Hello", "25")
+
+    # Before we call #save on our hello object, we need to check and see if a record containing this name and album already exists in the database. 
+    # The SQL statement to accomplish that would look something like this:
+
+    SELECT * FROM songs
+    WHERE name = "Hello", album = "25";
+
+    # If this statement returns a record, we don't need to create a new record, only update the existing one. Otherwise, we need to insert a new record into our database table.
+    # Let's build a method that will allow us to either find an existing record or create and save a new one.
+
+    >>>>>The "#find_or_create_by" Method<<<<<
+
+    class Song
+ 
+        attr_accessor :name, :album
+        attr_reader :id
+         
+          def initialize(id=nil, name, album)
+            @id = id
+            @name = name
+            @album = album
+          end
+         
+          def save
+            if self.id
+              self.update
+            else
+              sql = <<-SQL
+                INSERT INTO songs (name, album)
+                VALUES (?, ?)
+              SQL
+         
+              DB[:conn].execute(sql, self.name, self.album)
+              @id = DB[:conn].execute("SELECT last_insert_rowid() FROM songs")[0][0]
+            end
+          end
+         
+          def self.create(name:, album:)
+            song = Song.new(name, album)
+            song.save
+            song
+          end
+         
+          def self.find_by_id(id)
+            sql = "SELECT * FROM songs WHERE id = ?"
+            result = DB[:conn].execute(sql, id)[0]
+            Song.new(result[0], result[1], result[2])
+          end
+         
+          def update
+            sql = "UPDATE songs SET name = ?, album = ? WHERE id = ?"
+            DB[:conn].execute(sql, self.name, self.album, self.id)
+          end
+        end
+
+        def self.find_or_create_by(name:, album:)
+            song = DB[:conn].execute("SELECT * FROM songs WHERE name = ? and album = ?", name, album)
+            if !song.empty?
+                song_data = song[0]
+                song  = Song.new(song_data[0], song_data[1], song_data[2])
+            else
+                song = self.create(name: name, album: album)
+            end
+            song
+        end
+        
